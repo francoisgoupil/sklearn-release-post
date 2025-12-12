@@ -267,16 +267,43 @@ class ReleaseNotesParser:
         if not main_content:
             main_content = soup
         
-        # Strategy 1: Look for headings that might be highlights (h2, h3, h4)
-        headings = main_content.find_all(['h2', 'h3', 'h4'])
-        for heading in headings:
-            text = heading.get_text(strip=True)
-            # Skip common non-highlight headings
-            skip_headings = ['contents', 'navigation', 'related', 'examples', 'download', 
-                           'source code', 'gallery', 'previous', 'next', 'on this page']
-            if (len(text) > 10 and len(text) < 150 and
+        # Strategy 1: Prioritize h2 headings which are the main highlight sections
+        # These represent the key bullet points (e.g., "Array API support", "Free-threaded CPython")
+        # Search in entire soup since h2s might not be in the main_content div
+        h2_headings = soup.find_all('h2')
+        skip_headings = ['contents', 'navigation', 'related', 'examples', 'download', 
+                        'source code', 'gallery', 'previous', 'next', 'on this page', 'this page']
+        
+        for heading in h2_headings:
+            text = heading.get_text(separator=' ', strip=True)  # Use separator to handle split text
+            # Remove trailing # symbols that are common in documentation
+            text = re.sub(r'#+$', '', text).strip()
+            # Fix spacing issues (e.g., "inCalibrated" -> "in Calibrated")
+            text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
+            # Fix spacing around punctuation - add space before parentheses
+            text = re.sub(r'([a-zA-Z0-9])(\()', r'\1 \2', text)
+            # Normalize multiple spaces
+            text = re.sub(r'\s+', ' ', text)
+            text = text.strip()
+            
+            # Skip navigation and non-content headings
+            if (len(text) > 5 and len(text) < 200 and
                 not any(skip in text.lower() for skip in skip_headings) and
                 not re.match(r'^[A-Z\s]{2,}$', text)):  # Skip all-caps
+                highlights.append(text)
+        
+        # If we found h2 highlights, return them early (they're the main bullet points)
+        if highlights:
+            return highlights[:10]  # Limit to top 10 highlights
+        
+        # Strategy 1b: Fallback to h3/h4 headings if no h2 found
+        headings = main_content.find_all(['h3', 'h4'])
+        for heading in headings:
+            text = heading.get_text(strip=True)
+            text = re.sub(r'#+$', '', text).strip()
+            if (len(text) > 10 and len(text) < 150 and
+                not any(skip in text.lower() for skip in skip_headings) and
+                not re.match(r'^[A-Z\s]{2,}$', text)):
                 highlights.append(text)
         
         # Strategy 2: Look for list items in the main content
